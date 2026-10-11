@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16
+    container_name: nashlis-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nashlis_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в окружении или .env}
+      POSTGRES_DB: ${POSTGRES_DB:-nashlis}
+    ports:
+      - "5433:5432"
+    volumes:
+      - nashlis_pgdata:/var/lib/postgresql/data
+
+volumes:
+  nashlis_pgdata:
