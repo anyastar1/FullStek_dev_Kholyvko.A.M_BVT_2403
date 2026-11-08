@@ -1,6 +1,5 @@
 import { createTheme } from "@mui/material/styles";
 import { ruRU } from "@mui/material/locale";
-
 declare module "@mui/material/Chip" {
   interface ChipPropsColorOverrides {
     lost: true;
@@ -74,6 +73,20 @@ export const theme = createTheme(
       button: { fontWeight: 700, textTransform: "none" },
     },
     components: {
+      MuiCssBaseline: {
+        // Уважаем системную настройку «уменьшить движение»: анимации сводятся к мгновенным.
+        styleOverrides: `
+          @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+              animation-duration: 0.01ms !important;
+              animation-iteration-count: 1 !important;
+              transition-duration: 0.01ms !important;
+              transition-delay: 0ms !important;
+              scroll-behavior: auto !important;
+            }
+          }
+        `,
+      },
       MuiButton: {
         styleOverrides: {
           root: {
@@ -131,5 +144,5 @@ export const theme = createTheme(
       },
     },
   },
-  ruRU
+  ruRU,
 );
