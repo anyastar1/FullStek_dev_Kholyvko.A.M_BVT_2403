@@ -2,9 +2,10 @@ import { Box, Button, Container, Grid, Stack, Typography } from "@mui/material";
 import PhotoCameraOutlinedIcon from "@mui/icons-material/PhotoCameraOutlined";
 import TravelExploreOutlinedIcon from "@mui/icons-material/TravelExploreOutlined";
 import CampaignOutlinedIcon from "@mui/icons-material/CampaignOutlined";
-import { useNavigate } from "react-router-dom";
-import { PetCard } from "@/components/PetCard";
-import { mockPets } from "@/entities/pet/mockPets";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
+import { PetGrid, PetGridSkeleton, usePets } from "@/entities/pet";
+import { AsyncBoundary } from "@/shared/ui/AsyncBoundary";
+import { EmptyState } from "@/shared/ui/StateViews";
 
 const steps = [
   {
@@ -26,7 +27,7 @@ const steps = [
 
 export function HomePage() {
   const navigate = useNavigate();
-  const recentPets = mockPets.slice(0, 3);
+  const { data, loading, error, retry } = usePets();
 
   return (
     <Box>
@@ -38,8 +39,8 @@ export function HomePage() {
                 Питомец потерялся не один. Ищите его вместе с городом.
               </Typography>
               <Typography variant="h6" color="text.secondary" sx={{ fontWeight: 400, mb: 4, maxWidth: 560 }}>
-                «Нашлись» сравнивает фотографию вашего животного с объявлениями о находках по всему городу
-                и показывает наиболее похожих — без ручного пролистывания сотен карточек.
+                «FindPetik» сравнивает фотографию вашего животного с объявлениями о находках по всему городу и
+                показывает наиболее похожих — без ручного пролистывания сотен карточек.
               </Typography>
               <Stack direction={{ xs: "column", sm: "row" }} gap={2}>
                 <Button variant="contained" size="large" onClick={() => navigate("/search")}>
@@ -53,7 +54,7 @@ export function HomePage() {
             <Grid item xs={12} md={5}>
               <Box
                 component="img"
-                src="/images/megapuker.JPG"
+                src="public/images/megapuker.JPG"
                 alt="Кошка, которую ищут хозяева"
                 sx={{ width: "100%", borderRadius: 4, display: "block", boxShadow: "0 20px 40px -20px rgba(34,32,29,0.35)" }}
               />
@@ -64,7 +65,7 @@ export function HomePage() {
 
       <Container maxWidth="lg" sx={{ py: { xs: 7, md: 9 } }}>
         <Typography variant="h3" sx={{ fontSize: { xs: "1.7rem", md: "2.1rem" }, mb: 5 }}>
-          Что умеет наш сервис
+          Как это работает
         </Typography>
         <Grid container spacing={4}>
           {steps.map((step, index) => {
@@ -104,15 +105,31 @@ export function HomePage() {
             <Typography variant="h3" sx={{ fontSize: { xs: "1.7rem", md: "2.1rem" } }}>
               Свежие объявления
             </Typography>
-            <Button onClick={() => navigate("/feed")}>Смотреть все</Button>
+            <Button component={RouterLink} to="/feed">
+              Смотреть все
+            </Button>
           </Stack>
-          <Grid container spacing={3}>
-            {recentPets.map((pet) => (
-              <Grid item xs={12} sm={6} md={4} key={pet.id}>
-                <PetCard pet={pet} />
-              </Grid>
-            ))}
-          </Grid>
+          <AsyncBoundary
+            data={data}
+            loading={loading}
+            error={error}
+            onRetry={retry}
+            skeleton={<PetGridSkeleton count={3} />}
+            isEmpty={(pets) => pets.length === 0}
+            empty={
+              <EmptyState
+                title="Пока нет объявлений"
+                text="Станьте первым — разместите объявление о потерянном или найденном животном."
+                action={
+                  <Button variant="contained" component={RouterLink} to="/pets/new">
+                    Разместить объявление
+                  </Button>
+                }
+              />
+            }
+          >
+            {(pets) => <PetGrid pets={pets.slice(0, 3)} />}
+          </AsyncBoundary>
         </Container>
       </Box>
     </Box>
