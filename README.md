@@ -197,4 +197,44 @@ python -m uvicorn app.main:app --reload
 ```bash
 python -m pytest -v
 ```
+## Лабораторная работа №3. Архитектура frontend и динамический интерфейс
+
+### Цель
+Разделить frontend на слои, добавить интерактивные формы с валидацией, состояния загрузки/ошибки/«пусто» и анимации. Данные пока демонстрационные (in-memory API), навигация из ЛР №1 сохранена.
+
+### Архитектура (упрощённый Feature-Sliced Design)
+```
+src/
+├── app/        провайдеры (тема, роутер), маршруты, каркас (Header, Footer)
+├── pages/      экраны: Home, Feed, Search, PetDetail, CreateListing, Profile, Login, Register, NotFound
+├── features/   действия пользователя: filter-listings, search-by-photo, create-listing,
+│               auth, edit-profile, delete-listing  (model + ui + index.ts)
+├── entities/   предметные сущности: pet, user  (model, api, ui + публичный index.ts)
+└── shared/     config, lib (useForm, useAsync, validators…), theme, ui (AsyncBoundary, StateViews…)
+```
+Правило зависимостей: `app → pages → features → entities → shared`; слой импортирует только нижние слои и только через `index.ts`.
+
+### Что реализовано
+| Пункт | Реализация |
+|---|---|
+| 1. Разделение кода | страницы / действия / сущности / общие компоненты, без дублирования (`AsyncBoundary`, `PetGrid`, `useForm`) |
+| 2. FSD | структура выше |
+| 3. Интерактивность | формы, `useState`/хуки, типизированные props и данные (TypeScript strict) |
+| 4. Валидация | `useForm` + `validators.ts`: ошибки после blur/submit; формы: объявление, вход, регистрация, профиль, загрузка фото (JPG/PNG/WebP ≤ 5 МБ) |
+| 4. Состояния | loading (skeleton), error («Повторить»), empty — в ленте, поиске, профиле, карточке |
+| 5. Анимации | Fade (Reveal), Collapse, Dialog, Snackbar; `prefers-reduced-motion` учтён |
+| 6. Сценарии | маршруты ЛР №1 сохранены |
+
+### Проверка состояний
+- `/feed?demo=error` — ошибка и кнопка «Повторить»
+- `/feed?demo=empty` — пустая лента
+
+### Валидация
+| Поле | Правило |
+|---|---|
+| Email | обязателен, формат email |
+| Пароль | ≥ 8 символов, подтверждение совпадает |
+| Телефон | `+7 (999) 123-45-67`, 6–20 символов |
+| Фото | JPG/PNG/WebP, ≤ 5 МБ |
+
 
