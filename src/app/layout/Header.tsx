@@ -17,7 +17,8 @@ import {
 import MenuIcon from "@mui/icons-material/Menu";
 import PetsIcon from "@mui/icons-material/Pets";
 import { NavLink, useNavigate } from "react-router-dom";
-import { demoAvatarUrl } from "@/entities/user";
+import { useAuth } from "@/entities/user";
+import { getInitials } from "@/shared/lib/format";
 
 const navItems = [
   { label: "Главная", to: "/" },
@@ -29,6 +30,13 @@ const navItems = [
 export function Header() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const navigate = useNavigate();
+  const { user, status, logout } = useAuth();
+
+  const handleLogout = () => {
+    setDrawerOpen(false);
+    navigate("/"); // сначала уходим с приватной страницы, чтобы охрана маршрута не перекинула на /login
+    void logout();
+  };
 
   return (
     <AppBar position="sticky" elevation={0}>
@@ -67,12 +75,28 @@ export function Header() {
           <Box sx={{ flexGrow: 1, display: { xs: "block", md: "none" } }} />
 
           <Stack direction="row" gap={1.5} alignItems="center" sx={{ display: { xs: "none", md: "flex" } }}>
-            <Button variant="text" onClick={() => navigate("/login")}>
-              Войти
-            </Button>
-            <IconButton onClick={() => navigate("/profile")} aria-label="Личный кабинет">
-              <Avatar src={demoAvatarUrl} alt="Личный кабинет" sx={{ width: 34, height: 34 }} />
-            </IconButton>
+            {status === "authenticated" && user && (
+              <>
+                <IconButton onClick={() => navigate("/profile")} aria-label="Личный кабинет" title={user.name}>
+                  <Avatar sx={{ width: 34, height: 34, bgcolor: "primary.main", fontSize: "0.9rem" }}>
+                    {getInitials(user.name)}
+                  </Avatar>
+                </IconButton>
+                <Button variant="outlined" onClick={handleLogout}>
+                  Выйти
+                </Button>
+              </>
+            )}
+            {status === "anonymous" && (
+              <>
+                <Button variant="text" onClick={() => navigate("/login")}>
+                  Войти
+                </Button>
+                <Button variant="outlined" onClick={() => navigate("/register")}>
+                  Регистрация
+                </Button>
+              </>
+            )}
           </Stack>
 
           <IconButton
@@ -93,12 +117,26 @@ export function Header() {
                 <ListItemText primary={item.label} />
               </ListItemButton>
             ))}
-            <ListItemButton component={NavLink} to="/profile">
-              <ListItemText primary="Личный кабинет" />
-            </ListItemButton>
-            <ListItemButton component={NavLink} to="/login">
-              <ListItemText primary="Войти" />
-            </ListItemButton>
+            {status === "authenticated" && (
+              <>
+                <ListItemButton component={NavLink} to="/profile">
+                  <ListItemText primary="Личный кабинет" />
+                </ListItemButton>
+                <ListItemButton onClick={handleLogout}>
+                  <ListItemText primary="Выйти" />
+                </ListItemButton>
+              </>
+            )}
+            {status === "anonymous" && (
+              <>
+                <ListItemButton component={NavLink} to="/login">
+                  <ListItemText primary="Войти" />
+                </ListItemButton>
+                <ListItemButton component={NavLink} to="/register">
+                  <ListItemText primary="Регистрация" />
+                </ListItemButton>
+              </>
+            )}
           </List>
         </Box>
       </Drawer>

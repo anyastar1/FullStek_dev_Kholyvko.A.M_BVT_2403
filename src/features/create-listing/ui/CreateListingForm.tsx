@@ -15,7 +15,7 @@ import {
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { createPet, type ListingStatus, type PetSpecies } from "@/entities/pet";
-import { CURRENT_USER_ID } from "@/shared/config/demoUser";
+import { useAuth } from "@/entities/user";
 import { useForm } from "@/shared/lib/useForm";
 import { PhotoDropzone } from "@/shared/ui/PhotoDropzone";
 import { SubmitButton } from "@/shared/ui/SubmitButton";
@@ -26,14 +26,20 @@ const statusHints: Record<ListingStatus, string> = {
   found: "Укажите район, где нашли животное, и приметы. Точный адрес своего дома публиковать не нужно.",
 };
 
+/** Форма создания объявления с клиентской валидацией. */
 export function CreateListingForm() {
   const navigate = useNavigate();
-  const { values, errors, field, setValue, touch, handleSubmit } = useForm(emptyListingForm, validateListing);
+  const { user } = useAuth();
+  // контакты подставляются из профиля автора, их можно изменить
+  const { values, errors, field, setValue, touch, handleSubmit } = useForm(
+    { ...emptyListingForm, contactName: user?.name ?? "", contactPhone: user?.phone ?? "" },
+    validateListing,
+  );
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const submit = handleSubmit(async (form) => {
-    if (!form.photo) return;
+    if (!form.photo || !user) return;
     setSubmitting(true);
     setSubmitError(null);
     try {
@@ -53,7 +59,7 @@ export function CreateListingForm() {
           contactName: form.contactName.trim(),
           contactPhone: form.contactPhone.trim(),
         },
-        CURRENT_USER_ID,
+        user.id,
       );
       navigate(`/pets/${pet.id}`, { state: { created: true } });
     } catch {

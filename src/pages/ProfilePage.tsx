@@ -4,18 +4,19 @@ import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { PetGrid, PetGridSkeleton, usePetsByAuthor, type Pet } from "@/entities/pet";
-import { fetchCurrentUser, type User } from "@/entities/user";
+import { useAuth, type User } from "@/entities/user";
 import { DeleteListingDialog } from "@/features/delete-listing";
 import { EditProfileDialog } from "@/features/edit-profile";
-import { CURRENT_USER_ID } from "@/shared/config/demoUser";
-import { useAsync } from "@/shared/lib/useAsync";
+import { getInitials } from "@/shared/lib/format";
 import { AsyncBoundary } from "@/shared/ui/AsyncBoundary";
 import { EmptyState } from "@/shared/ui/StateViews";
 
 function UserCard({ user, onEdit }: { user: User; onEdit: () => void }) {
   return (
     <Paper variant="outlined" sx={{ p: 3, textAlign: "center" }}>
-      <Avatar src={user.avatarUrl} alt={user.name} sx={{ width: 96, height: 96, mx: "auto", mb: 2 }} />
+      <Avatar sx={{ width: 96, height: 96, mx: "auto", mb: 2, bgcolor: "primary.main", fontSize: "2rem" }}>
+        {getInitials(user.name)}
+      </Avatar>
       <Typography variant="h6">{user.name}</Typography>
       <Typography variant="body2" color="text.secondary" gutterBottom>
         На сервисе с {user.memberSince}
@@ -52,8 +53,8 @@ function UserCard({ user, onEdit }: { user: User; onEdit: () => void }) {
 
 export function ProfilePage() {
   const navigate = useNavigate();
-  const user = useAsync(fetchCurrentUser);
-  const myPets = usePetsByAuthor(CURRENT_USER_ID);
+  const { user } = useAuth(); // страница приватная: сюда попадает только вошедший пользователь
+  const myPets = usePetsByAuthor(user?.id ?? "");
   const [editOpen, setEditOpen] = useState(false);
   const [petToDelete, setPetToDelete] = useState<Pet | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -62,16 +63,11 @@ export function ProfilePage() {
     <Container maxWidth="lg" sx={{ py: { xs: 5, md: 7 } }}>
       <Grid container spacing={5}>
         <Grid item xs={12} md={4}>
-          <AsyncBoundary
-            data={user.data}
-            loading={user.loading}
-            error={user.error}
-            onRetry={user.reload}
-            skeleton={<Skeleton variant="rectangular" height={380} sx={{ borderRadius: 3 }} />}
-            empty={null}
-          >
-            {(current) => <UserCard user={current} onEdit={() => setEditOpen(true)} />}
-          </AsyncBoundary>
+          {user ? (
+            <UserCard user={user} onEdit={() => setEditOpen(true)} />
+          ) : (
+            <Skeleton variant="rectangular" height={380} sx={{ borderRadius: 3 }} />
+          )}
         </Grid>
 
         <Grid item xs={12} md={8}>
@@ -118,14 +114,13 @@ export function ProfilePage() {
         </Grid>
       </Grid>
 
-      {user.data && (
+      {user && (
         <EditProfileDialog
           open={editOpen}
-          user={user.data}
+          user={user}
           onClose={() => setEditOpen(false)}
           onSaved={() => {
             setEditOpen(false);
-            user.reload();
             setNotice("Профиль обновлён");
           }}
         />
