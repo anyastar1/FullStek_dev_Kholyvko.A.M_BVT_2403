@@ -1,47 +1,57 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
-from app import crud, schemas
+from app import auth, crud, models, schemas
 from app.config import get_settings
 from app.database import get_db
 
-router = APIRouter(prefix="/users", tags=["Пользователи"])
-
-_NOT_FOUND = {404: {"model": schemas.ErrorResponse, "description": "Пользователь не найден"}}
-
-
-@router.post(
-    "",
-    response_model=schemas.UserRead,
-    status_code=status.HTTP_201_CREATED,
-    responses={409: {"model": schemas.ErrorResponse, "description": "Email уже занят"}},
+# Все маршруты приватные: пользователь работает только со своими данными.
+# Регистрация находится в /auth/register, публичного списка пользователей нет (в нём были бы чужие email).
+router = APIRouter(
+    prefix="/users",
+    tags=["Пользователи"],
+    responses={
+        401: {"model": schemas.ErrorResponse, "description": "Нет или недействителен access token"},
+        403: {"model": schemas.ErrorResponse, "description": "Чужой профиль"},
+    },
 )
-def create_user(data: schemas.UserCreate, db: Session = Depends(get_db)):
-    return crud.create_user(db, data)
 
 
-@router.get("", response_model=list[schemas.UserRead])
-def list_users(skip: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100), db: Session = Depends(get_db)):
-    return crud.list_users(db, skip, limit)
-
-
-@router.get("/{user_id}", response_model=schemas.UserRead, responses=_NOT_FOUND)
-def get_user(user_id: int, db: Session = Depends(get_db)):
+@router.get("/{user_id}", response_model=schemas.UserRead)
+def get_user(user_id: int, current: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    auth.ensure_self(current, user_id)
     return crud.get_user(db, user_id)
 
 
-@router.patch("/{user_id}", response_model=schemas.UserRead, responses=_NOT_FOUND)
-def update_user(user_id: int, data: schemas.UserUpdate, db: Session = Depends(get_db)):
+@router.patch(
+    "/{user_id}",
+    response_model=schemas.UserRead,
+    responses={409: {"model": schemas.ErrorResponse, "description": "Email уже занят"}},
+)
+def update_user(
+    user_id: int,
+    data: schemas.UserUpdate,
+    current: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db),
+):
+    auth.ensure_self(current, user_id)
     return crud.update_user(db, user_id, data)
 
 
-@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT, responses=_NOT_FOUND)
-def delete_user(user_id: int, db: Session = Depends(get_db)):
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user(user_id: int, current: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    auth.ensure_self(current, user_id)
     crud.delete_user(db, user_id, get_settings().upload_dir)
 
 
-@router.get("/{user_id}/pets", response_model=list[schemas.PetRead], tags=["Питомцы"], responses=_NOT_FOUND)
-def list_user_pets(user_id: int, db: Session = Depends(get_db)):
+# --- Питомцы пользователя (вложенный ресурс) ---
+
+
+@router.get("/{user_id}/pets", response_model=list[schemas.PetRead], tags=["Питомцы"])
+def list_user_pets(
+    user_id: int, current: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)
+):
+    auth.ensure_self(current, user_id)
     return crud.list_user_pets(db, user_id)
 
 
@@ -50,7 +60,12 @@ def list_user_pets(user_id: int, db: Session = Depends(get_db)):
     response_model=schemas.PetRead,
     status_code=status.HTTP_201_CREATED,
     tags=["Питомцы"],
-    responses=_NOT_FOUND,
 )
-def create_pet(user_id: int, data: schemas.PetCreate, db: Session = Depends(get_db)):
+def create_pet(
+    user_id: int,
+    data: schemas.PetCreate,
+    current: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db),
+):
+    auth.ensure_self(current, user_id)
     return crud.create_pet(db, user_id, data)

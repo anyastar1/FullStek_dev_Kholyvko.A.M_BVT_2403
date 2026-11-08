@@ -27,12 +27,37 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    # Хеш пароля (Argon2id). Сам пароль нигде не хранится.
+    password_hash: Mapped[str] = mapped_column(String(255))
     name: Mapped[str] = mapped_column(String(100))
     phone: Mapped[str | None] = mapped_column(String(32))
     city: Mapped[str | None] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    # Удаление пользователя удаляет его питомцев и объявления.
     pets: Mapped[list["Pet"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     listings: Mapped[list["Listing"]] = relationship(back_populates="author", cascade="all, delete-orphan")
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+
+class RefreshToken(Base):
+    """Выданный refresh token. В БД хранится только его SHA-256, сам токен знает клиент.
+
+    Все токены одной сессии (цепочка обновлений) имеют общий session_id:
+    выход или подозрение на кражу отзывает всю сессию сразу.
+    """
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    session_id: Mapped[str] = mapped_column(String(36), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+    user: Mapped[User] = relationship(back_populates="refresh_tokens")
 
 
 class Pet(Base):
@@ -53,6 +78,8 @@ class Pet(Base):
     photos: Mapped[list["PetPhoto"]] = relationship(
         back_populates="pet", cascade="all, delete-orphan", order_by="PetPhoto.id"
     )
+    # Без cascade: при удалении питомца у его объявлений pet_id становится NULL,
+    # сами объявления остаются.
     listings: Mapped[list["Listing"]] = relationship(back_populates="pet")
 
 

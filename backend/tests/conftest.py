@@ -1,18 +1,20 @@
 import os
 import tempfile
 
+# Переменные окружения должны быть заданы ДО импорта приложения.
 _UPLOADS = tempfile.mkdtemp(prefix="nashlis_test_uploads_")
 os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["UPLOAD_DIR"] = _UPLOADS
+os.environ["SECRET_KEY"] = "test-secret-key-for-pytest-only-0123456789abcdef"
 
-import pytest 
-from fastapi.testclient import TestClient  
-from sqlalchemy import create_engine  
-from sqlalchemy.orm import sessionmaker  
-from sqlalchemy.pool import StaticPool  
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+from sqlalchemy.pool import StaticPool  # noqa: E402
 
-from app.database import Base, get_db  
-from app.main import app 
+from app.database import Base, get_db  # noqa: E402
+from app.main import app  # noqa: E402
 
 
 @pytest.fixture()
@@ -35,17 +37,48 @@ def client():
     Base.metadata.drop_all(engine)
 
 
-@pytest.fixture()
-def user(client):
-    response = client.post("/users", json={"email": "anna@example.com", "name": "Анна", "city": "Москва"})
-    assert response.status_code == 201
+PASSWORD = "correct-horse-battery"
+
+
+def register(client, email="anna@example.com", name="Анна", **extra):
+    """Регистрирует пользователя и возвращает тело ответа (токены + user)."""
+    response = client.post(
+        "/auth/register", json={"email": email, "name": name, "password": PASSWORD, "city": "Москва", **extra}
+    )
+    assert response.status_code == 201, response.text
     return response.json()
 
 
+def bearer(session: dict) -> dict:
+    return {"Authorization": f"Bearer {session['access_token']}"}
+
+
 @pytest.fixture()
-def listing_payload(user):
+def session(client):
+    """Зарегистрированный пользователь Анна с токенами."""
+    return register(client)
+
+
+@pytest.fixture()
+def user(session):
+    return session["user"]
+
+
+@pytest.fixture()
+def headers(session):
+    """Заголовок авторизации Анны."""
+    return bearer(session)
+
+
+@pytest.fixture()
+def other_session(client):
+    """Второй пользователь для проверки прав на чужие данные."""
+    return register(client, email="boris@example.com", name="Борис")
+
+
+@pytest.fixture()
+def listing_payload():
     return {
-        "author_id": user["id"],
         "status": "lost",
         "species": "cat",
         "name": "Рыжик",

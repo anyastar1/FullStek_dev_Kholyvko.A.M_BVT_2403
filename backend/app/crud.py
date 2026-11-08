@@ -1,3 +1,5 @@
+"""Операции с данными и бизнес-логика. Слой не знает про HTTP, кроме исключения AppError."""
+
 from pathlib import Path
 
 from sqlalchemy import select
@@ -8,11 +10,12 @@ from app import models, schemas
 
 
 class AppError(Exception):
-  
+    """Ошибка бизнес-логики; роутеры превращают её в HTTP-ответ."""
 
-    def __init__(self, status_code: int, detail: str):
+    def __init__(self, status_code: int, detail: str, headers: dict[str, str] | None = None):
         self.status_code = status_code
         self.detail = detail
+        self.headers = headers
         super().__init__(detail)
 
 
@@ -39,15 +42,19 @@ def _email_taken(db: Session, email: str, exclude_id: int | None = None) -> bool
     return db.scalar(query) is not None
 
 
-def create_user(db: Session, data: schemas.UserCreate) -> models.User:
+def get_user_by_email(db: Session, email: str) -> models.User | None:
+    return db.scalar(select(models.User).where(models.User.email == email.lower()))
+
+
+def create_user(db: Session, data: schemas.RegisterRequest, password_hash: str) -> models.User:
     email = data.email.lower()
     if _email_taken(db, email):
         raise AppError(409, f"Пользователь с email {email} уже существует")
-    user = models.User(**{**data.model_dump(), "email": email})
+    user = models.User(**{**data.model_dump(exclude={"password"}), "email": email, "password_hash": password_hash})
     db.add(user)
     try:
         db.commit()
-    except IntegrityError: 
+    except IntegrityError:  # гонка двух одновременных запросов
         db.rollback()
         raise AppError(409, f"Пользователь с email {email} уже существует")
     db.refresh(user)
@@ -75,10 +82,14 @@ def update_user(db: Session, user_id: int, data: schemas.UserUpdate) -> models.U
 def delete_user(db: Session, user_id: int, upload_dir: str) -> None:
     user = get_user(db, user_id)
     files = [photo.url for pet in user.pets for photo in pet.photos]
-    db.delete(user)  
+    db.delete(user)  # каскадом удалятся питомцы, их фото и объявления
     db.commit()
     for url in files:
         _remove_file(url, upload_dir)
+
+
+# ---------- Питомцы ----------
+
 
 def get_pet(db: Session, pet_id: int) -> models.Pet:
     pet = db.get(models.Pet, pet_id)
@@ -88,7 +99,7 @@ def get_pet(db: Session, pet_id: int) -> models.Pet:
 
 
 def list_user_pets(db: Session, user_id: int) -> list[models.Pet]:
-    get_user(db, user_id)  
+    get_user(db, user_id)  # 404, если пользователя нет
     return list(db.scalars(select(models.Pet).where(models.Pet.owner_id == user_id).order_by(models.Pet.id)))
 
 
@@ -117,7 +128,7 @@ def update_pet(db: Session, pet_id: int, data: schemas.PetUpdate) -> models.Pet:
 def delete_pet(db: Session, pet_id: int, upload_dir: str) -> None:
     pet = get_pet(db, pet_id)
     files = [photo.url for photo in pet.photos]
-    db.delete(pet) 
+    db.delete(pet)  # фото удаляются каскадом, у объявлений pet_id станет NULL
     db.commit()
     for url in files:
         _remove_file(url, upload_dir)
@@ -141,6 +152,9 @@ def delete_pet_photo(db: Session, pet_id: int, photo_id: int, upload_dir: str) -
     db.delete(photo)
     db.commit()
     _remove_file(url, upload_dir)
+
+
+# ---------- Объявления ----------
 
 
 def get_listing(db: Session, listing_id: int) -> models.Listing:
@@ -184,11 +198,11 @@ def _check_pet_belongs_to_author(db: Session, pet_id: int, author_id: int) -> No
         raise AppError(400, "Нельзя привязать к объявлению питомца другого пользователя")
 
 
-def create_listing(db: Session, data: schemas.ListingCreate) -> models.Listing:
-    get_user(db, data.author_id)
+def create_listing(db: Session, author_id: int, data: schemas.ListingCreate) -> models.Listing:
+    """Автор берётся из токена (его определяет роутер), а не из тела запроса."""
     if data.pet_id is not None:
-        _check_pet_belongs_to_author(db, data.pet_id, data.author_id)
-    listing = models.Listing(**data.model_dump())
+        _check_pet_belongs_to_author(db, data.pet_id, author_id)
+    listing = models.Listing(author_id=author_id, **data.model_dump())
     db.add(listing)
     db.commit()
     db.refresh(listing)
@@ -215,7 +229,12 @@ def delete_listing(db: Session, listing_id: int) -> None:
     db.delete(listing)
     db.commit()
 
+
+# ---------- Файлы ----------
+
+
 def _remove_file(url: str, upload_dir: str) -> None:
+    """Удаляет файл фото с диска (если он есть). URL вида /uploads/<имя>."""
     name = Path(url).name
     path = Path(upload_dir) / name
     try:

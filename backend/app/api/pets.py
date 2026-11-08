@@ -4,12 +4,20 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app import crud, schemas
+from app import auth, crud, models, schemas
 from app.config import get_settings
 from app.crud import AppError
 from app.database import get_db
 
-router = APIRouter(prefix="/pets", tags=["Питомцы"])
+# Питомцы — часть личного профиля: все маршруты приватные и доступны только владельцу.
+router = APIRouter(
+    prefix="/pets",
+    tags=["Питомцы"],
+    responses={
+        401: {"model": schemas.ErrorResponse, "description": "Нет или недействителен access token"},
+        403: {"model": schemas.ErrorResponse, "description": "Чужой питомец"},
+    },
+)
 
 _NOT_FOUND = {404: {"model": schemas.ErrorResponse, "description": "Питомец не найден"}}
 
@@ -17,17 +25,24 @@ _ALLOWED_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".web
 
 
 @router.get("/{pet_id}", response_model=schemas.PetRead, responses=_NOT_FOUND)
-def get_pet(pet_id: int, db: Session = Depends(get_db)):
-    return crud.get_pet(db, pet_id)
+def get_pet(pet_id: int, current: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    return auth.get_owned_pet(db, pet_id, current)
 
 
 @router.patch("/{pet_id}", response_model=schemas.PetRead, responses=_NOT_FOUND)
-def update_pet(pet_id: int, data: schemas.PetUpdate, db: Session = Depends(get_db)):
+def update_pet(
+    pet_id: int,
+    data: schemas.PetUpdate,
+    current: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db),
+):
+    auth.get_owned_pet(db, pet_id, current)
     return crud.update_pet(db, pet_id, data)
 
 
 @router.delete("/{pet_id}", status_code=status.HTTP_204_NO_CONTENT, responses=_NOT_FOUND)
-def delete_pet(pet_id: int, db: Session = Depends(get_db)):
+def delete_pet(pet_id: int, current: models.User = Depends(auth.get_current_user), db: Session = Depends(get_db)):
+    auth.get_owned_pet(db, pet_id, current)
     crud.delete_pet(db, pet_id, get_settings().upload_dir)
 
 
@@ -41,9 +56,14 @@ def delete_pet(pet_id: int, db: Session = Depends(get_db)):
         415: {"model": schemas.ErrorResponse, "description": "Неподдерживаемый тип файла"},
     },
 )
-async def upload_pet_photo(pet_id: int, file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_pet_photo(
+    pet_id: int,
+    file: UploadFile = File(...),
+    current: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db),
+):
     settings = get_settings()
-    crud.get_pet(db, pet_id)  # сначала проверяем, что питомец существует
+    auth.get_owned_pet(db, pet_id, current)  # питомец существует и принадлежит текущему пользователю
 
     extension = _ALLOWED_TYPES.get(file.content_type or "")
     if extension is None:
@@ -72,5 +92,11 @@ async def upload_pet_photo(pet_id: int, file: UploadFile = File(...), db: Sessio
     status_code=status.HTTP_204_NO_CONTENT,
     responses={404: {"model": schemas.ErrorResponse, "description": "Питомец или фото не найдены"}},
 )
-def delete_pet_photo(pet_id: int, photo_id: int, db: Session = Depends(get_db)):
+def delete_pet_photo(
+    pet_id: int,
+    photo_id: int,
+    current: models.User = Depends(auth.get_current_user),
+    db: Session = Depends(get_db),
+):
+    auth.get_owned_pet(db, pet_id, current)
     crud.delete_pet_photo(db, pet_id, photo_id, get_settings().upload_dir)

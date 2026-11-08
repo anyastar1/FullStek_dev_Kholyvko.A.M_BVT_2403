@@ -20,6 +20,7 @@ def _check_phone(value: str | None) -> str | None:
 class ORMModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+
 class UserCreate(BaseModel):
     email: EmailStr
     name: str = Field(min_length=1, max_length=100)
@@ -35,6 +36,10 @@ class UserCreate(BaseModel):
         if not value:
             raise ValueError("Имя не может быть пустым")
         return value
+
+
+class RegisterRequest(UserCreate):
+    password: str = Field(min_length=8, max_length=128)
 
 
 class UserUpdate(BaseModel):
@@ -53,6 +58,9 @@ class UserRead(ORMModel):
     phone: str | None
     city: str | None
     created_at: datetime
+
+
+# ---------- Питомцы и фото ----------
 
 
 class PetPhotoRead(ORMModel):
@@ -89,6 +97,9 @@ class PetRead(ORMModel):
     photos: list[PetPhotoRead] = []
 
 
+# ---------- Объявления ----------
+
+
 class ListingBase(BaseModel):
     status: ListingStatus
     species: Species
@@ -114,8 +125,7 @@ class ListingBase(BaseModel):
 
 
 class ListingCreate(ListingBase):
-    # Пока нет авторизации (ЛР №4), автор передаётся явно.
-    author_id: int
+    # Автор объявления — текущий пользователь (из access token), в теле его не передают.
     pet_id: int | None = None
 
 
@@ -163,6 +173,29 @@ class ListingRead(ORMModel):
     contact_phone: str
     is_active: bool
     created_at: datetime
+
+
+# ---------- Аутентификация ----------
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(min_length=1, max_length=512)
+
+
+class TokenPair(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int = Field(description="Срок жизни access token, секунды")
+
+
+class AuthResponse(TokenPair):
+    user: UserRead
 
 
 class ErrorResponse(BaseModel):
